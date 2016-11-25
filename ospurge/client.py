@@ -590,8 +590,8 @@ class KeystoneManager(object):
             try:
                 # Can raise api_exceptions.Forbidden:
                 tenants = self.client_projects.list()
-                project_id = filter(
-                    lambda x: x.name == project_name_or_id, tenants)[0].id
+                project_id = list(filter(
+                    lambda x: x.name == project_name_or_id, tenants))[0].id
             except IndexError:
                 raise exceptions.NoSuchProject(project_name_or_id)
 
@@ -610,7 +610,7 @@ class KeystoneManager(object):
     def get_admin_role_id(self):
         if not self.admin_role_id:
             roles = self.client.roles.list()
-            self.admin_role_id = filter(lambda x: x.name == self.admin_role_name, roles)[0].id
+            self.admin_role_id = list(filter(lambda x: x.name == self.admin_role_name, roles))[0].id
         return self.admin_role_id
 
     def become_project_admin(self, project_id):
