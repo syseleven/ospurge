@@ -787,9 +787,7 @@ def parse_args():
     return args
 
 
-def main():
-    args = parse_args()
-
+def main(args):
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
     else:
@@ -869,4 +867,5 @@ def main():
     sys.exit(0)
 
 if __name__ == "__main__":
-    main()
+    commandline_args = parse_args()
+    main(commandline_args)
