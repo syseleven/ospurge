@@ -537,7 +537,7 @@ class KeystoneManager(object):
 
     """Manages Keystone queries."""
 
-    def __init__(self, username, password, project, auth_url, insecure,
+    def __init__(self, username, password, project, auth_url, insecure, endpoint_type,
                  **kwargs):
         data = {
             'username': username,
@@ -558,7 +558,7 @@ class KeystoneManager(object):
 
         self.auth = keystone_auth.Password(auth_url, **data)
         session = keystone_session.Session(auth=self.auth, verify=(not insecure))
-        self.client = keystone_client.Client(session=session)
+        self.client = keystone_client.Client(session=session, interface=endpoint_type)
 
         self.admin_role_id = None
         self.tenant_info = None
@@ -809,7 +809,7 @@ def main():
     try:
         keystone_manager = KeystoneManager(args.username, args.password,
                                            project, args.auth_url,
-                                           args.insecure, **data)
+                                           args.insecure, args.endpoint_type, **data)
     except api_exceptions.Unauthorized as exc:
         print("Authentication failed: {}".format(str(exc)))
         sys.exit(constants.AUTHENTICATION_FAILED_ERROR_CODE)

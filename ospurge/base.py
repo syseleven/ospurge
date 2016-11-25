@@ -108,7 +108,7 @@ class Session(object):
         self.project_name = self.client.project_name
         self.keystone_session = session
         self.endpoint_type = endpoint_type
-        self.catalog = auth.auth_ref.service_catalog.get_endpoints()
+        self.catalog = auth.auth_ref.service_catalog.get_endpoints(interface=self.endpoint_type)
 
         try:
             # Detect if we are admin or not
