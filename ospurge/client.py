@@ -867,7 +867,7 @@ def purge(args):
     sys.exit(0)
 
 
-def main();
+def main():
     commandline_args = parse_args()
     purge(commandline_args)
 
