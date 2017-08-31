@@ -787,7 +787,7 @@ def parse_args():
     return args
 
 
-def main(args):
+def purge(args):
     if args.verbose:
         logging.basicConfig(level=logging.INFO)
     else:
@@ -866,6 +866,11 @@ def main(args):
             keystone_manager.undo_become_project_admin(cleanup_project_id)
     sys.exit(0)
 
-if __name__ == "__main__":
+
+def main();
     commandline_args = parse_args()
-    main(commandline_args)
+    purge(commandline_args)
+
+    
+if __name__ == "__main__":
+    main()
