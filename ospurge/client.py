@@ -476,7 +476,7 @@ class GlanceImages(base.Resources):
         self.client.images.delete(image.id)
 
     def resource_str(self, image):
-        return "image {} (id {})".format(image.name, image.id)
+        return u"image {} (id {})".format(image.name, image.id)
 
     def _owned_resource(self, res):
         # Only considering resources owned by project
