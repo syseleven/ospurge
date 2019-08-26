@@ -167,6 +167,7 @@ class TestServiceResource(unittest.TestCase):
         creds_manager = mock.Mock()
         resource_manager = base.ServiceResource(creds_manager)
 
+        self.assertEqual(resource_manager.creds_manager, creds_manager)
         self.assertEqual(resource_manager.cloud, creds_manager.cloud)
         self.assertEqual(resource_manager.options, creds_manager.options)
         self.assertEqual(resource_manager.cleanup_project_id,
@@ -238,3 +239,36 @@ class TestServiceResource(unittest.TestCase):
                 mock.Mock(is_set=mock.Mock(return_value=False)))
 
         self.assertEqual(3, m.call_count)
+
+    def test_list_other_resource(self):
+        class Foo1(base.ServiceResource):
+            ORDER = 1
+
+            def list(self):
+                return ['foo_1']
+
+            def delete(self, resource):
+                return True
+
+            @staticmethod
+            def to_str(resource):
+                return "Foo 1"
+
+        class Foo2(base.ServiceResource):
+            ORDER = 2
+
+            def list(self):
+                return ['foo_2']
+
+            def delete(self, resource):
+                return True
+
+            @staticmethod
+            def to_str(resource):
+                return "Foo 2"
+
+        creds_manager = mock.Mock()
+        foo1 = Foo1(creds_manager)
+        foo2 = Foo2(creds_manager)
+        self.assertEqual(foo1.list_other_resource('Foo2'), ['foo_2'])
+        self.assertEqual(foo2.list_other_resource('Foo1'), ['foo_1'])

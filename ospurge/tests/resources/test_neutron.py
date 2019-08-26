@@ -234,3 +234,18 @@ class TestSecurityGroups(unittest.TestCase):
         sg = mock.MagicMock()
         self.assertIn("Security Group (",
                       neutron.SecurityGroups(self.creds_manager).to_str(sg))
+
+    def test_check_prerequisite(self):
+        self.cloud.list_ports.return_value = [
+            {'device_owner': 'network:dhcp'},
+            {'device_owner': 'network:router_interface'},
+            {'device_owner': 'network:router_interface_distributed'},
+            {'device_owner': ''}
+        ]
+        security_groups = neutron.SecurityGroups(self.creds_manager)
+        ports = security_groups.list_other_resource('Ports')
+        self.assertEqual([{'device_owner': ''}], ports)
+        security_groups.check_prerequisite()
+        self.cloud.list_ports.assert_called_once_with(
+            filters={'tenant_id': self.creds_manager.project_id})
+        self.cloud.list_servers.assert_called_once_with()

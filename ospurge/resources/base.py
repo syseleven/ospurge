@@ -22,9 +22,12 @@ except ImportError:
 import six
 
 from ospurge import exceptions
+from ospurge import utils
+
 
 if TYPE_CHECKING:  # pragma: no cover
     import argparse  # noqa: F401
+    from ospurge.main import CredentialsManager  # noqa: F401
     import shade  # noqa: F401
     from typing import Optional  # noqa: F401
 
@@ -89,6 +92,7 @@ else:   # pragma: no cover here
 
 class BaseServiceResource(object):
     def __init__(self):
+        self.creds_manager = None  # type: Optional[CredentialsManager]
         self.cleanup_project_id = None  # type: Optional[str]
         self.cloud = None  # type: Optional[shade.OpenStackCloud]
         self.options = None  # type: Optional[argparse.Namespace]
@@ -106,9 +110,11 @@ class ServiceResource(six.with_metaclass(CodingStyleMixin,
                     self.__module__, self.__class__.__name__)  # type: ignore
             )
 
+        self.creds_manager = creds_manager
         self.cleanup_project_id = creds_manager.project_id
         self.cloud = creds_manager.cloud
         self.options = creds_manager.options
+        self._other_resources = {}
 
     @classmethod
     def order(cls):
@@ -159,3 +165,20 @@ class ServiceResource(six.with_metaclass(CodingStyleMixin,
         else:
             raise exceptions.TimeoutError(
                 "Timeout exceeded waiting for check_prerequisite()")
+
+    def list_other_resource(self, name):
+        """call the `list` method on other resources
+
+        Sometimes we want to call the `list` method from other resources
+        because these other resources do some filtering and we want to keep
+        with the DRY (Don't Repeat Yourself) principle and not reimplement the
+        same "list" method.
+        e.g. When wanting to list another resource in `self.check_prerequisite`
+        """
+
+        if name not in self._other_resources:
+            # We want to instantiate the other resource class only once.
+            self._other_resources[name] = utils.get_resource_classes(
+                [name]
+            )[0](self.creds_manager)
+        return self._other_resources[name].list()
