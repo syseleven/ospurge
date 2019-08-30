@@ -199,7 +199,11 @@ def runner(resource_mngr, options, exit):
                 # mypy complains: "Exception" has no attribute
                 # "inner_exception"
                 exc_info = exc.inner_exception  # type: ignore
-                if exc_info[0].__name__.lower().endswith('endpointnotfound'):
+                exc_type = exc_info[0]
+                if (
+                    exc_type is not None and
+                    exc_type.__name__.lower().endswith('endpointnotfound')
+                ):
                     return True
             return False
 
