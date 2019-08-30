@@ -137,6 +137,12 @@ class Networks(base.ServiceResource):
 class SecurityGroups(base.ServiceResource):
     ORDER = 49
 
+    def check_prerequisite(self):
+        # We do not want to reimplement `Ports.list` here in respect to the DRY
+        # principle.
+        return (self.list_other_resource('Servers') == [] and
+                self.list_other_resource('Ports') == [])
+
     def list(self):
         return [sg for sg in self.cloud.list_security_groups(
             filters={'tenant_id': self.cleanup_project_id})
