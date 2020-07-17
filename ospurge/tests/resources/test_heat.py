@@ -11,7 +11,7 @@
 #  under the License.
 import unittest
 
-import shade
+import openstack.connection
 
 from ospurge.resources import heat
 from ospurge.tests import mock
@@ -19,7 +19,7 @@ from ospurge.tests import mock
 
 class TestStacks(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list_without_service(self):
@@ -37,6 +37,11 @@ class TestStacks(unittest.TestCase):
         stack = mock.MagicMock()
         self.assertIsNone(heat.Stacks(self.creds_manager).delete(stack))
         self.cloud.delete_stack.assert_called_once_with(stack['id'], wait=True)
+
+    def test_disable(self):
+        stack = mock.MagicMock()
+        with self.assertLogs(level='WARNING'):
+            heat.Stacks(self.creds_manager).disable(stack)
 
     def test_to_string(self):
         stack = mock.MagicMock()

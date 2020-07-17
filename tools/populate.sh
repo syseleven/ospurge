@@ -15,8 +15,11 @@
 # OS_PROJECT_NAME with various resources. The purpose is to test
 # ospurge.
 
-# Be strict
-set -ueo pipefail
+# Be strict but don't exit automatically on error (exit_on_failure handles that)
+set -xuo pipefail
+
+# Set this so -x doesn't spam warnings
+RC_DIR=$(cd $(dirname "${BASH_SOURCE:-$0}") && pwd)
 
 function exit_on_failure {
     RET_CODE=$?
@@ -54,14 +57,29 @@ function wait_for_volume_to_be_available {
     done
 }
 
+function wait_for_lb_active {
+    LB_ID=$1
+    LB_STATUS=$(openstack loadbalancer show ${LB_ID} -c provisioning_status -f value)
+    while [ $LB_STATUS != "ACTIVE" ]; do
+        if [ $LB_STATUS == "ERROR" ]; then
+            echo "Status of LB ${LB_NAME} is $LB_STATUS. Failing." && false
+            exit_on_failure "Octavia LoadBalancer ${LB_NAME} entered $LB_STATUS status."
+        fi
+
+        echo "Status of LB ${LB_NAME} is $LB_STATUS. Waiting 3 sec"
+        sleep 3
+        LB_STATUS=$(openstack loadbalancer show ${LB_ID} -c provisioning_status -f value)
+    done
+}
+
 # Check if needed environment variable OS_PROJECT_NAME is set and non-empty.
 : "${OS_PROJECT_NAME:?Need to set OS_PROJECT_NAME non-empty}"
 
 # Some random UUID
 # Commented to workaround a nova #1730756 with non-ASCII VM name:
 # https://bugs.launchpad.net/nova/+bug/1730756
-#UUID="♫$(cat /proc/sys/kernel/random/uuid)✓"
-UUID="$(cat /proc/sys/kernel/random/uuid)"
+ASCII_UUID="$(cat /proc/sys/kernel/random/uuid)"
+UUID="♫${ASCII_UUID}✓"
 # Name of external network
 EXTNET_NAME=${EXTNET_NAME:-public}
 # Name of flavor used to spawn a VM
@@ -69,7 +87,12 @@ FLAVOR=${FLAVOR:-m1.nano}
 # Image used for the VM
 VMIMG_NAME=${VMIMG_NAME:-cirros-0.4.0-x86_64-disk}
 # Zone name used for the Designate Zone
-ZONE_NAME="${UUID//-/}.com."
+ZONE_NAME="${ASCII_UUID//-/}.com."
+# LoadBalancer name used for the Octavia LoadBalancer
+LB_NAME="lb-${UUID//-/}"
+LB_LISTENER_NAME="listener-${UUID//-/}"
+# Subnet used for the Octavia LoadBalancer VIP
+LB_VIP_SUBNET_ID=${LB_VIP_SUBNET_ID:-$UUID}
 
 
 
@@ -189,6 +212,24 @@ swift upload ${UUID} ${UUID}.raw || true
 # Create Designate Zone
 openstack zone create --email hostmaster@example.com ${ZONE_NAME}
 exit_on_failure "Unable to create Designate Zone ${ZONE_NAME}"
+
+
+###############################
+### Octavia
+###############################
+# Create Octavia LoadBalancer
+LB_ID=$(openstack loadbalancer create --name ${LB_NAME} --vip-subnet-id ${LB_VIP_SUBNET_ID} -f value -c id)
+exit_on_failure "Unable to create Octavia LoadBalancer ${LB_NAME} (${LB_ID}) as $OS_USERNAME/$OS_PROJECT_NAME"
+# Wait for LB to be active
+wait_for_lb_active $LB_ID
+
+# Create Octavia Listener
+openstack loadbalancer listener create \
+    --protocol HTTP --protocol-port 80 --name ${LB_LISTENER_NAME} \
+    ${LB_NAME}
+exit_on_failure "Unable to create Octavia Listener ${LB_LISTENER_NAME}"
+# Wait for LB to be active
+wait_for_lb_active $LB_ID
 
 
 ###############################

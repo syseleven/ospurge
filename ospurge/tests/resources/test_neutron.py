@@ -11,7 +11,7 @@
 #  under the License.
 import unittest
 
-import shade
+import openstack.connection
 
 from ospurge.resources import neutron
 from ospurge.tests import mock
@@ -19,7 +19,7 @@ from ospurge.tests import mock
 
 class TestFloatingIPs(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_check_prerequisite(self):
@@ -47,6 +47,14 @@ class TestFloatingIPs(unittest.TestCase):
         self.cloud.delete_floating_ip.assert_called_once_with(
             fip['id'])
 
+    def test_disable(self):
+        fip = mock.MagicMock()
+        self.assertIsNone(neutron.FloatingIPs(self.creds_manager).disable(
+            fip
+        ))
+        self.cloud.network.update_ip.assert_called_once_with(
+            fip['id'], port_id=None)
+
     def test_to_string(self):
         fip = mock.MagicMock()
         self.assertIn("Floating IP ",
@@ -55,7 +63,7 @@ class TestFloatingIPs(unittest.TestCase):
 
 class TestRouterInterfaces(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_check_prerequisite(self):
@@ -79,9 +87,11 @@ class TestRouterInterfaces(unittest.TestCase):
         self.assertIs(self.cloud.list_ports.return_value,
                       neutron.RouterInterfaces(self.creds_manager).list())
         self.cloud.list_ports.assert_called_once_with(
-            filters={'device_owner': ['network:router_interface',
-                                      'network:router_interface_distributed'],
-                     'tenant_id': self.creds_manager.project_id}
+            filters={
+                'device_owner': ['network:router_interface',
+                                 'network:router_interface_distributed',
+                                 'network:ha_router_replicated_interface'],
+                'tenant_id': self.creds_manager.project_id}
         )
 
     def test_delete(self):
@@ -93,6 +103,13 @@ class TestRouterInterfaces(unittest.TestCase):
             port_id=iface['id']
         )
 
+    def test_disable(self):
+        iface = mock.MagicMock()
+        with self.assertLogs(level='WARNING'):
+            neutron.RouterInterfaces(self.creds_manager).disable(
+                iface
+            )
+
     def test_to_string(self):
         iface = mock.MagicMock()
         self.assertIn(
@@ -103,7 +120,7 @@ class TestRouterInterfaces(unittest.TestCase):
 
 class TestRouters(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_check_prerequisite(self):
@@ -116,9 +133,11 @@ class TestRouters(unittest.TestCase):
             False, neutron.Routers(self.creds_manager).check_prerequisite())
 
         self.cloud.list_ports.assert_called_with(
-            filters={'device_owner': ['network:router_interface',
-                                      'network:router_interface_distributed'],
-                     'tenant_id': self.creds_manager.project_id}
+            filters={
+                'device_owner': ['network:router_interface',
+                                 'network:router_interface_distributed',
+                                 'network:ha_router_replicated_interface'],
+                'tenant_id': self.creds_manager.project_id}
         )
 
     def test_list(self):
@@ -131,6 +150,14 @@ class TestRouters(unittest.TestCase):
         self.assertIsNone(neutron.Routers(self.creds_manager).delete(router))
         self.cloud.delete_router.assert_called_once_with(router['id'])
 
+    def test_disable(self):
+        router = mock.MagicMock()
+        self.assertIsNone(neutron.Routers(self.creds_manager).disable(router))
+        self.cloud.update_router.assert_called_once_with(
+            router['id'],
+            admin_state_up=False
+        )
+
     def test_to_string(self):
         router = mock.MagicMock()
         self.assertIn("Router (",
@@ -139,7 +166,7 @@ class TestRouters(unittest.TestCase):
 
 class TestPorts(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list(self):
@@ -159,6 +186,14 @@ class TestPorts(unittest.TestCase):
         self.assertIsNone(neutron.Ports(self.creds_manager).delete(port))
         self.cloud.delete_port.assert_called_once_with(port['id'])
 
+    def test_disable(self):
+        port = mock.MagicMock()
+        self.assertIsNone(neutron.Ports(self.creds_manager).disable(port))
+        self.cloud.update_port.assert_called_once_with(
+            port['id'],
+            admin_state_up=False
+        )
+
     def test_to_string(self):
         port = mock.MagicMock()
         self.assertIn("Port (",
@@ -167,7 +202,7 @@ class TestPorts(unittest.TestCase):
 
 class TestNetworks(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_check_prerequisite(self):
@@ -203,6 +238,14 @@ class TestNetworks(unittest.TestCase):
         self.assertIsNone(neutron.Networks(self.creds_manager).delete(nw))
         self.cloud.delete_network.assert_called_once_with(nw['id'])
 
+    def test_disable(self):
+        nw = mock.MagicMock()
+        self.assertIsNone(neutron.Networks(self.creds_manager).disable(nw))
+        self.cloud.update_network.assert_called_once_with(
+            nw['id'],
+            admin_state_up=False
+        )
+
     def test_to_string(self):
         nw = mock.MagicMock()
         self.assertIn("Network (",
@@ -211,7 +254,7 @@ class TestNetworks(unittest.TestCase):
 
 class TestSecurityGroups(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list(self):
@@ -229,6 +272,11 @@ class TestSecurityGroups(unittest.TestCase):
         self.assertIsNone(
             neutron.SecurityGroups(self.creds_manager).delete(sg))
         self.cloud.delete_security_group.assert_called_once_with(sg['id'])
+
+    def test_disable(self):
+        sg = mock.MagicMock()
+        with self.assertLogs(level='WARNING'):
+            neutron.SecurityGroups(self.creds_manager).disable(sg)
 
     def test_to_string(self):
         sg = mock.MagicMock()

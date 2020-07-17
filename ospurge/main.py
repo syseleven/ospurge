@@ -18,8 +18,9 @@ import sys
 import threading
 import typing
 
-import os_client_config
-import shade
+from openstack.config import loader
+from openstack import connection
+from openstack import exceptions as os_exceptions
 
 from ospurge import exceptions
 from ospurge import utils
@@ -67,6 +68,15 @@ def create_argument_parser():
         help="Purge only the specified resource type. Repeat to delete "
              "several types at once."
     )
+    parser.add_argument(
+        "--os-identity-api-version", default=3,
+        help="Identity API version, default=3"
+    )
+    parser.add_argument(
+        "--disable-only", action="store_true",
+        help="Disable resources of the project rather than purging them. "
+             "Useful if you want to keep the resources but disable them."
+    )
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
@@ -83,54 +93,51 @@ def create_argument_parser():
 
 
 class CredentialsManager(object):
-    def __init__(self, options):
+    def __init__(self, options, config):
         self.options = options
+        self.config = config
 
         self.revoke_role_after_purge = False
         self.disable_project_after_purge = False
 
-        self.cloud = None  # type: Optional[shade.OpenStackCloud]
-        self.operator_cloud = None  # type: Optional[shade.OperatorCloud]
+        self.cloud = connection.Connection(
+            config=config.get_one(argparse=options)
+        )
+        self.user_id = self.cloud.current_user_id
+        self.project_id = self.cloud.current_project_id
+        self.project_name = self.cloud.current_project.name
 
-        if options.purge_own_project:
-            self.cloud = shade.openstack_cloud(argparse=options)
-            self.user_id = self.cloud.keystone_session.get_user_id()
-            self.project_id = self.cloud.keystone_session.get_project_id()
-        else:
-            self.operator_cloud = shade.operator_cloud(argparse=options)
-            self.user_id = self.operator_cloud.keystone_session.get_user_id()
+        self.admin_cloud = None  # type: Optional[connection.Connection]
 
-            project = self.operator_cloud.get_project(options.purge_project)
-            if not project:
+        if not options.purge_own_project:
+            try:
+                # Only admins can do this:
+                project = self.cloud.get_project(options.purge_project)
+                if not project:
+                    raise os_exceptions.OpenStackCloudException()
+            except os_exceptions.OpenStackCloudException:
                 raise exceptions.OSProjectNotFound(
                     "Unable to find project '{}'".format(options.purge_project)
                 )
-            self.project_id = project['id']
-
             # If project is not enabled, we must disable it after purge.
-            self.disable_project_after_purge = not project.enabled
+            self.project_id = project.id
+            self.project_name = project.name
+            self.disable_project_after_purge = not project.is_enabled
 
-            # Reuse the information passed to get the `OperatorCloud` but
-            # change the project. This way we bind/re-scope to the project
-            # we want to purge, not the project we authenticated to.
-            self.cloud = shade.openstack_cloud(
-                **utils.replace_project_info(
-                    self.operator_cloud.cloud_config.config,
-                    self.project_id
-                )
-            )
+            self.admin_cloud = self.cloud
+            self.cloud = self.admin_cloud.connect_as_project(
+                options.purge_project)
 
-        auth_args = self.cloud.cloud_config.get_auth_args()
         logging.warning(
             "Going to list and/or delete resources from project '%s'",
-            options.purge_project or auth_args.get('project_name')
-            or auth_args.get('project_id')
+            options.purge_project or self.project_name
+            or self.project_id
         )
 
     def ensure_role_on_project(self):
-        if self.operator_cloud and self.operator_cloud.grant_role(
-                self.options.admin_role_name,
-                project=self.options.purge_project, user=self.user_id
+        if self.admin_cloud and self.admin_cloud.grant_role(
+            self.options.admin_role_name,
+            project=self.options.purge_project, user=self.user_id
         ):
             logging.warning(
                 "Role 'Member' granted to user '%s' on project '%s'",
@@ -139,7 +146,7 @@ class CredentialsManager(object):
             self.revoke_role_after_purge = True
 
     def revoke_role_on_project(self):
-        self.operator_cloud.revoke_role(
+        self.admin_cloud.revoke_role(
             self.options.admin_role_name, user=self.user_id,
             project=self.options.purge_project)
         logging.warning(
@@ -148,13 +155,13 @@ class CredentialsManager(object):
         )
 
     def ensure_enabled_project(self):
-        if self.operator_cloud and self.disable_project_after_purge:
-            self.operator_cloud.update_project(self.project_id, enabled=True)
+        if self.admin_cloud and self.disable_project_after_purge:
+            self.admin_cloud.update_project(self.project_id, enabled=True)
             logging.warning("Project '%s' was disabled before purge and it is "
                             "now enabled", self.options.purge_project)
 
     def disable_project(self):
-        self.operator_cloud.update_project(self.project_id, enabled=False)
+        self.admin_cloud.update_project(self.project_id, enabled=False)
         logging.warning("Project '%s' was disabled before purge and it is "
                         "now also disabled", self.options.purge_project)
 
@@ -162,7 +169,9 @@ class CredentialsManager(object):
 def runner(resource_mngr, options, exit):
     try:
 
-        if not (options.dry_run or options.resource):
+        if not (options.dry_run or
+                options.resource or
+                options.disable_only):
             resource_mngr.wait_for_check_prerequisite(exit)
 
         for resource in resource_mngr.list():
@@ -170,22 +179,27 @@ def runner(resource_mngr, options, exit):
             if exit.is_set():
                 return
 
-            if resource_mngr.should_delete(resource):
+            resource_func_to_call = None
+            if options.disable_only:
+                resource_func_to_call = resource_mngr.disable
+                logging.info("Going to disable resource %s",
+                             resource_mngr.to_str(resource))
+
+            elif resource_mngr.should_delete(resource):
+                resource_func_to_call = resource_mngr.delete
                 logging.info("Going to delete %s",
                              resource_mngr.to_str(resource))
 
-                # If we are in dry run mode, don't actually delete the resource
+            if resource_func_to_call:
+                # If we are in dry run mode, don't actually delete/disable
+                # the resource
                 if options.dry_run:
                     continue
 
-                # If we want to delete only specific resources, many things
-                # can go wrong, so we basically ignore all exceptions.
-                if options.resource:
-                    exc = shade.OpenStackCloudException
-                else:
-                    exc = shade.OpenStackCloudResourceNotFound
-
-                utils.call_and_ignore_exc(exc, resource_mngr.delete, resource)
+                # If we want to delete/disable only specific resources, many
+                # things can go wrong, so we basically ignore all exceptions.
+                exc = os_exceptions.OpenStackCloudException
+                utils.call_and_ignore_exc(exc, resource_func_to_call, resource)
 
     except Exception as exc:
         log = logging.error
@@ -215,17 +229,16 @@ def runner(resource_mngr, options, exit):
             exit.set()
 
 
-@utils.monkeypatch_oscc_logging_warning
 def main():
     parser = create_argument_parser()
 
-    cloud_config = os_client_config.OpenStackConfig()
+    cloud_config = loader.OpenStackConfig()
     cloud_config.register_argparse_arguments(parser, sys.argv)
 
     options = parser.parse_args()
     configure_logging(options.verbose)
 
-    creds_manager = CredentialsManager(options=options)
+    creds_manager = CredentialsManager(options=options, config=cloud_config)
     creds_manager.ensure_enabled_project()
     creds_manager.ensure_role_on_project()
 

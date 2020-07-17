@@ -28,7 +28,7 @@ from ospurge import utils
 if TYPE_CHECKING:  # pragma: no cover
     import argparse  # noqa: F401
     from ospurge.main import CredentialsManager  # noqa: F401
-    import shade  # noqa: F401
+    import openstack.connection as os_connection  # noqa: F401
     from typing import Optional  # noqa: F401
 
 
@@ -94,7 +94,7 @@ class BaseServiceResource(object):
     def __init__(self):
         self.creds_manager = None  # type: Optional[CredentialsManager]
         self.cleanup_project_id = None  # type: Optional[str]
-        self.cloud = None  # type: Optional[shade.OpenStackCloud]
+        self.cloud = None  # type: Optional[os_connection.Connection]
         self.options = None  # type: Optional[argparse.Namespace]
 
 
@@ -132,7 +132,7 @@ class ServiceResource(six.with_metaclass(CodingStyleMixin,
         if project_id:
             return project_id == self.cleanup_project_id
         else:
-            # Uncomment the following line once Shade and all OpenStack
+            # Uncomment the following line once the SDK and all OpenStack
             # services returns the resource owner. In the mean time no need
             # to be worrying.
             # logging.warning("Can't determine owner of resource %s", resource)
@@ -141,6 +141,14 @@ class ServiceResource(six.with_metaclass(CodingStyleMixin,
     @abc.abstractmethod
     def delete(self, resource):
         raise NotImplementedError
+
+    def disable(self, resource):
+        msg = "The disable feature is not supported for %s, No action will" \
+              "be taken against the resource(id=%s, name=%s)."
+        logging.warning(
+            msg, self.__class__.__name__,
+            resource.get('id'), resource.get('name')
+        )
 
     @staticmethod
     @abc.abstractmethod

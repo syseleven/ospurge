@@ -11,7 +11,7 @@
 #  under the License.
 import unittest
 
-import shade
+import openstack.connection
 
 from ospurge.resources import nova
 from ospurge.tests import mock
@@ -19,7 +19,7 @@ from ospurge.tests import mock
 
 class TestServers(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list(self):
@@ -31,6 +31,11 @@ class TestServers(unittest.TestCase):
         server = mock.MagicMock()
         self.assertIsNone(nova.Servers(self.creds_manager).delete(server))
         self.cloud.delete_server.assert_called_once_with(server['id'])
+
+    def test_disable(self):
+        server = mock.MagicMock()
+        self.assertIsNone(nova.Servers(self.creds_manager).disable(server))
+        self.cloud.compute.stop_server.assert_called_once_with(server['id'])
 
     def test_to_string(self):
         server = mock.MagicMock()

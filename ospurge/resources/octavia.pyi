@@ -16,38 +16,8 @@ from typing import Iterable
 from ospurge.resources import base
 
 
-class Backups(base.ServiceResource):
+class LoadBalancers(base.ServiceResource):
     def list(self) -> Iterable:
-        ...
-
-    def delete(self, resource: Dict[str, Any]) -> None:
-        ...
-
-    @staticmethod
-    def to_str(resource: Dict[str, Any]) -> str:
-        ...
-
-
-class Snapshots(base.ServiceResource):
-    def list(self) -> Iterable:
-        ...
-
-    def delete(self, resource: Dict[str, Any]) -> None:
-        ...
-
-    @staticmethod
-    def to_str(resource: Dict[str, Any]) -> str:
-        ...
-
-
-class Volumes(base.ServiceResource):
-    def check_prerequisite(self) -> bool:
-        ...
-
-    def list(self) -> Iterable:
-        ...
-
-    def should_delete(self, resource: Dict[str, Any]) -> bool:
         ...
 
     def delete(self, resource: Dict[str, Any]) -> None:

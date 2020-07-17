@@ -11,7 +11,7 @@
 #  under the License.
 import unittest
 
-import shade
+import openstack.connection
 
 from ospurge.resources import swift
 from ospurge.tests import mock
@@ -19,7 +19,7 @@ from ospurge.tests import mock
 
 class TestListObjectsMixin(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.obj_lister = swift.ListObjectsMixin()
         self.obj_lister.cloud = self.cloud
 
@@ -46,7 +46,7 @@ class TestListObjectsMixin(unittest.TestCase):
 
 class TestObjects(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_check_prerequisite(self):
@@ -76,10 +76,23 @@ class TestObjects(unittest.TestCase):
         self.assertRaises(StopIteration, next, objects)
 
     def test_delete(self):
-        obj = mock.MagicMock()
-        self.assertIsNone(swift.Objects(self.creds_manager).delete(obj))
-        self.cloud.delete_object.assert_called_once_with(
-            obj['container_name'], obj['name'])
+        objects = [
+            {'name': 'toto', 'container_name': 'foo'},
+            {'name': 'tata foo', 'container_name': 'baz bar'},
+            {'name': 'titi#1', 'container_name': 'bar#2'},
+            {'name': 'hihi♫', 'container_name': 'bar♫'},
+        ]
+        for obj in objects:
+            self.assertIsNone(swift.Objects(self.creds_manager).delete(obj))
+            self.cloud.delete_object.assert_called_with(
+                obj['container_name'],
+                obj['name']
+            )
+
+    def test_disable(self):
+        obj = {'name': 'toto', 'container_name': 'foo'}
+        with self.assertLogs(level='WARNING'):
+            swift.Objects(self.creds_manager).disable(obj)
 
     def test_to_string(self):
         obj = mock.MagicMock()
@@ -89,7 +102,7 @@ class TestObjects(unittest.TestCase):
 
 class TestContainers(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     @mock.patch('ospurge.resources.swift.ListObjectsMixin.list_objects')
@@ -111,9 +124,25 @@ class TestContainers(unittest.TestCase):
         self.cloud.list_containers.assert_called_once_with()
 
     def test_delete(self):
-        cont = mock.MagicMock()
+        cont = {'bytes': 8,
+                'count': 2,
+                'last_modified': '2019-06-05T15:20:59.450120',
+                'name': 'Pouet éêù #'}
         self.assertIsNone(swift.Containers(self.creds_manager).delete(cont))
-        self.cloud.delete_container.assert_called_once_with(cont['name'])
+        self.cloud.delete_container.assert_called_once_with(
+            cont['name']
+        )
+
+    def test_disable(self):
+        cont = {'bytes': 8,
+                'count': 2,
+                'last_modified': '2019-06-05T15:20:59.450120',
+                'name': 'Pouet éêù #'}
+        self.assertIsNone(swift.Containers(self.creds_manager).disable(cont))
+        self.cloud.object_store.set_container_metadata.assert_called_once_with(
+            cont['name'],
+            read_acl=None, write_acl=None
+        )
 
     def test_to_string(self):
         container = mock.MagicMock()

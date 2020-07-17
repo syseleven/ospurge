@@ -12,19 +12,26 @@
 from ospurge.resources import base
 
 
-class Servers(base.ServiceResource):
-    ORDER = 15
+class LoadBalancers(base.ServiceResource):
+    ORDER = 10
 
     def list(self):
-        return self.cloud.list_servers()
+        if not self.cloud.has_service('load-balancer'):
+            return []
+        return self.cloud.load_balancer.load_balancers(
+            project_id=self.cleanup_project_id)
 
     def delete(self, resource):
-        self.cloud.delete_server(resource['id'])
+        self.cloud.load_balancer.delete_load_balancer(
+            resource['id'], cascade=True)
 
     def disable(self, resource):
-        self.cloud.compute.stop_server(resource['id'])
+        self.cloud.load_balancer.update_load_balancer(
+            resource['id'],
+            admin_state_up=False
+        )
 
     @staticmethod
     def to_str(resource):
-        return "VM (id='{}', name='{}')".format(
+        return "Octavia LoadBalancer (id='{}', name='{}')".format(
             resource['id'], resource['name'])

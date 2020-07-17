@@ -12,7 +12,10 @@
 #  under the License.
 
 # Be strict (but not too much: '-u' doesn't always play nice with devstack)
-set -eo pipefail
+set -xeo pipefail
+
+# Set this so -x doesn't spam warnings
+RC_DIR=$(cd $(dirname "${BASH_SOURCE:-$0}") && pwd)
 
 readonly PROGDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -72,6 +75,77 @@ function assert_volume {
     fi
 }
 
+########################
+# Disable asserts
+########################
+function test_neutron_disable {
+    if [[ $(openstack port list -c Status -f value --device-owner compute:nova --project $demo_project_id | grep -ic 'active' ) -gt 0 ]]; then
+        echo "Some of the ports is not disabled yet :)"
+        exit 1
+    fi
+    if [[ $(openstack port list -c Status -f value --device-owner  ''  --project $demo_project_id | grep -ic 'active' ) -gt 0 ]]; then
+        echo "Some of the ports is not disabled yet :)"
+        exit 1
+    fi
+    if [[ $(openstack network list --no-share --long -c State -f value --project $demo_project_id | grep -ic 'UP' ) -gt 0 ]]; then
+        echo "Some of the networks is not disabled yet :)"
+        exit 1
+    fi
+    for router in $(openstack router list -c ID -f value --project $demo_project_id); do
+        if [[ $(openstack router show $router -c admin_state_up -f value | grep -ic 'true' ) -gt 0 ]]; then
+            echo "Some of the routers is not disabled yet :)"
+            exit 1
+        fi
+    done
+}
+
+
+function test_cinder_disable {
+    if [[ $(openstack volume list --long -c Properties -f value | grep -qvi 'readonly') ]]; then
+        echo "Cinder volume is not disabled :)"
+        exit 1
+    fi
+}
+
+
+function test_glance_disable {
+    if [[ $(openstack image list --long -c Project -c Status -f value| grep $demo_project_id | grep -ic 'active' ) -gt 0 ]]; then
+        echo "Some of the images is not disabled yet :)"
+        exit 1
+    fi
+}
+
+
+function test_nova_disable {
+    if [[ $(openstack server list -c Status -f value | grep -ic 'active' ) -gt 0 ]]; then
+        echo "Some of the servers is not disabled yet :)"
+        exit 1
+    fi
+}
+
+
+function test_loadbalancer_disable {
+    for loadbalancer in $(openstack loadbalancer list -c id -f value --project $demo_project_id); do
+        if [[ $(openstack loadbalancer show $loadbalancer -c admin_state_up -f value | grep -ic 'true' ) -gt 0 ]]; then
+            echo "Some of the loadbalancers is not disabled yet :)"
+            exit 1
+        fi
+    done
+}
+
+
+function test_swift_disable {
+    for container in $(openstack container list -c Name -f value); do
+        if [[ $(openstack container show $container -f json |  grep -iq 'read[-_]acl:.*' ) ]]; then
+            echo "Some of the containers  is not disabled yet :)"
+            exit 1
+        fi
+        if [[ $(openstack container show $container -f json |  grep -iq 'write[-_]acl:.*' ) ]]; then
+            echo "Some of the containers is not disabled yet :)"
+            exit 1
+        fi
+    done
+}
 
 
 ########################
@@ -82,7 +156,9 @@ if [[ ! "$(openstack flavor list)" =~ 'm1.nano' ]]; then
     openstack flavor create --id 42 --ram 64 --disk 1 --vcpus 1 m1.nano
 fi
 
-
+# Allow additional test user/projects access the load-balancer service
+openstack role add --user demo --project invisible_to_admin load-balancer_member
+openstack role add --user alt_demo --project alt_demo load-balancer_member
 
 ########################
 ### Populate
@@ -98,8 +174,8 @@ pid+=($!)
 (source $DEVSTACK_DIR/openrc demo invisible_to_admin && ${PROGDIR}/populate.sh) &
 pid+=($!)
 
-#(source $DEVSTACK_DIR/openrc alt_demo alt_demo && ${PROGDIR}/populate.sh) &
-#pid+=($!)
+(source $DEVSTACK_DIR/openrc alt_demo alt_demo && ${PROGDIR}/populate.sh) &
+pid+=($!)
 
 for i in ${!pid[@]}; do
     wait ${pid[i]}
@@ -110,11 +186,24 @@ for i in ${!pid[@]}; do
     unset "pid[$i]"
 done
 
+echo "Done populating. Moving on to cleanup."
 
+########################
+# Disable
+########################
+source $DEVSTACK_DIR/openrc admin admin
+demo_project_id=$(openstack project show demo -c id -f value | awk '{print $1}')
+source $DEVSTACK_DIR/openrc demo demo
+assert_compute && assert_network && assert_volume
+
+tox -e run -- --os-cloud devstack --purge-own-project --verbose --disable-only # disable demo/demo
+test_neutron_disable && test_cinder_disable && test_glance_disable \
+&& test_nova_disable && test_loadbalancer_disable && test_swift_disable
 
 ########################
 ### Cleanup
 ########################
+source $DEVSTACK_DIR/openrc admin admin
 tox -e run -- --os-cloud devstack-admin --purge-own-project --verbose # purges admin/admin
 
 source $DEVSTACK_DIR/openrc demo demo
@@ -127,18 +216,33 @@ assert_compute && assert_network && assert_volume
 
 tox -e run -- \
     --os-auth-url http://localhost/identity \
-    --os-username demo --os-project-name invisible_to_admin \
+    --os-cacert /opt/stack/data/ca-bundle.pem \
+    --os-identity-api-version 3 \
+    --os-region-name $OS_REGION_NAME \
+    --os-username demo \
+    --os-project-name invisible_to_admin \
     --os-password $invisible_to_admin_demo_pass \
-    --os-domain-id=$OS_PROJECT_DOMAIN_ID \
-    --purge-own-project --verbose
+    --os-domain-id $OS_PROJECT_DOMAIN_ID \
+    --purge-own-project \
+    --verbose
 
-#source $DEVSTACK_DIR/openrc alt_demo alt_demo
-#assert_compute && assert_network && assert_volume
+source $DEVSTACK_DIR/openrc alt_demo alt_demo
+assert_compute && assert_network && assert_volume
 
 source $DEVSTACK_DIR/openrc admin admin
-#openstack project set --disable alt_demo
-#tox -e run -- --os-auth-url http://localhost/identity --os-username admin --os-project-name admin --os-password $admin_admin_pass --purge-project alt_demo --verbose
-#openstack project set --enable alt_demo
+openstack project set --disable alt_demo
+tox -e run -- \
+    --os-auth-url http://localhost/identity \
+    --os-cacert /opt/stack/data/ca-bundle.pem \
+    --os-identity-api-version 3 \
+    --os-region-name $OS_REGION_NAME \
+    --os-username admin \
+    --os-project-name admin \
+    --os-password $admin_admin_pass \
+    --os-domain-id $OS_PROJECT_DOMAIN_ID \
+    --purge-project alt_demo \
+    --verbose
+openstack project set --enable alt_demo
 
 
 
@@ -170,5 +274,10 @@ fi
 
 if [[ $(openstack zone list --all-projects | wc -l) -ne 1 ]]; then  # This also checks FIP
     echo "Not all zones were cleaned up"
+    exit 1
+fi
+
+if [[ $(openstack loadbalancer list | wc -l) -ne 1 ]]; then
+    echo "Not all loadbalancers were cleaned up"
     exit 1
 fi

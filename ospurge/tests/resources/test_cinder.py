@@ -11,7 +11,7 @@
 #  under the License.
 import unittest
 
-import shade
+import openstack.connection
 
 from ospurge.resources import cinder
 from ospurge.tests import mock
@@ -19,7 +19,7 @@ from ospurge.tests import mock
 
 class TestBackups(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list(self):
@@ -32,6 +32,11 @@ class TestBackups(unittest.TestCase):
         self.assertIsNone(cinder.Backups(self.creds_manager).delete(backup))
         self.cloud.delete_volume_backup.assert_called_once_with(backup['id'])
 
+    def test_disable(self):
+        backup = mock.MagicMock()
+        with self.assertLogs(level='WARNING'):
+            cinder.Backups(self.creds_manager).disable(backup)
+
     def test_to_string(self):
         backup = mock.MagicMock()
         self.assertIn("Volume Backup",
@@ -40,7 +45,7 @@ class TestBackups(unittest.TestCase):
 
 class TestSnapshots(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list(self):
@@ -55,6 +60,11 @@ class TestSnapshots(unittest.TestCase):
         self.cloud.delete_volume_snapshot.assert_called_once_with(
             snapshot['id'])
 
+    def test_disable(self):
+        snapshot = mock.MagicMock()
+        with self.assertLogs(level='WARNING'):
+            cinder.Snapshots(self.creds_manager).disable(snapshot)
+
     def test_to_string(self):
         snapshot = mock.MagicMock()
         self.assertIn("Volume Snapshot ",
@@ -63,7 +73,7 @@ class TestSnapshots(unittest.TestCase):
 
 class TestVolumes(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud, project_id=42)
 
     def test_check_prerequisite(self):
@@ -96,6 +106,14 @@ class TestVolumes(unittest.TestCase):
         volume = mock.MagicMock()
         self.assertIsNone(cinder.Volumes(self.creds_manager).delete(volume))
         self.cloud.delete_volume.assert_called_once_with(volume['id'])
+
+    def test_disable(self):
+        volume = mock.MagicMock()
+        cinder.Volumes(self.creds_manager).disable(volume)
+        self.cloud.update_volume.assert_called_once_with(
+            volume['id'],
+            metadata={'readonly': 'true'}
+        )
 
     def test_to_string(self):
         volume = mock.MagicMock()

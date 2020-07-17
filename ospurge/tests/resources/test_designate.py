@@ -11,7 +11,7 @@
 #  under the License.
 import unittest
 
-import shade
+import openstack.connection
 
 from ospurge.resources import designate
 from ospurge.tests import mock
@@ -19,7 +19,7 @@ from ospurge.tests import mock
 
 class TestZones(unittest.TestCase):
     def setUp(self):
-        self.cloud = mock.Mock(spec_set=shade.openstackcloud.OpenStackCloud)
+        self.cloud = mock.Mock(spec_set=openstack.connection.Connection)
         self.creds_manager = mock.Mock(cloud=self.cloud)
 
     def test_list_without_service(self):
@@ -37,6 +37,11 @@ class TestZones(unittest.TestCase):
         zone = mock.MagicMock()
         self.assertIsNone(designate.Zones(self.creds_manager).delete(zone))
         self.cloud.delete_zone.assert_called_once_with(zone['id'])
+
+    def test_disable(self):
+        zone = mock.MagicMock()
+        with self.assertLogs(level='WARNING'):
+            designate.Zones(self.creds_manager).disable(zone)
 
     def test_to_string(self):
         stack = mock.MagicMock()
