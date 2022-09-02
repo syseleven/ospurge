@@ -38,7 +38,7 @@ class TestFloatingIPs(unittest.TestCase):
         self.assertIs(self.cloud.search_floating_ips.return_value,
                       neutron.FloatingIPs(self.creds_manager).list())
         self.cloud.search_floating_ips.assert_called_once_with(
-            filters={'tenant_id': self.creds_manager.project_id}
+            filters={'project_id': self.creds_manager.project_id}
         )
 
     def test_delete(self):
@@ -80,7 +80,7 @@ class TestRouterInterfaces(unittest.TestCase):
         self.assertEqual(False, ifaces_manager.check_prerequisite())
 
         self.cloud.search_floating_ips.assert_called_with(
-            filters={'tenant_id': self.creds_manager.project_id}
+            filters={'project_id': self.creds_manager.project_id}
         )
 
     def test_list(self):
@@ -91,7 +91,7 @@ class TestRouterInterfaces(unittest.TestCase):
                 'device_owner': ['network:router_interface',
                                  'network:router_interface_distributed',
                                  'network:ha_router_replicated_interface'],
-                'tenant_id': self.creds_manager.project_id}
+                'project_id': self.creds_manager.project_id}
         )
 
     def test_delete(self):
@@ -137,7 +137,7 @@ class TestRouters(unittest.TestCase):
                 'device_owner': ['network:router_interface',
                                  'network:router_interface_distributed',
                                  'network:ha_router_replicated_interface'],
-                'tenant_id': self.creds_manager.project_id}
+                'project_id': self.creds_manager.project_id}
         )
 
     def test_list(self):
@@ -179,7 +179,7 @@ class TestPorts(unittest.TestCase):
         ports = neutron.Ports(self.creds_manager).list()
         self.assertEqual([{'device_owner': ''}], ports)
         self.cloud.list_ports.assert_called_once_with(
-            filters={'tenant_id': self.creds_manager.project_id})
+            filters={'project_id': self.creds_manager.project_id})
 
     def test_delete(self):
         port = mock.MagicMock()
@@ -215,7 +215,7 @@ class TestNetworks(unittest.TestCase):
             False, neutron.Networks(self.creds_manager).check_prerequisite())
 
         self.cloud.list_ports.assert_called_with(
-            filters={'tenant_id': self.creds_manager.project_id}
+            filters={'project_id': self.creds_manager.project_id}
         )
 
     def test_list(self):
@@ -230,7 +230,7 @@ class TestNetworks(unittest.TestCase):
         self.assertEqual(2, len(nw_list))
 
         self.cloud.list_networks.assert_called_with(
-            filters={'tenant_id': self.creds_manager.project_id}
+            filters={'project_id': self.creds_manager.project_id}
         )
 
     def test_delete(self):
@@ -264,7 +264,7 @@ class TestSecurityGroups(unittest.TestCase):
         self.assertEqual(
             1, len(neutron.SecurityGroups(self.creds_manager).list()))
         self.cloud.list_security_groups.assert_called_once_with(
-            filters={'tenant_id': self.creds_manager.project_id}
+            filters={'project_id': self.creds_manager.project_id}
         )
 
     def test_delete(self):
@@ -295,5 +295,5 @@ class TestSecurityGroups(unittest.TestCase):
         self.assertEqual([{'device_owner': ''}], ports)
         security_groups.check_prerequisite()
         self.cloud.list_ports.assert_called_once_with(
-            filters={'tenant_id': self.creds_manager.project_id})
+            filters={'project_id': self.creds_manager.project_id})
         self.cloud.list_servers.assert_called_once_with()
