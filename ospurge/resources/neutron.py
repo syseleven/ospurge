@@ -109,7 +109,12 @@ class Ports(base.ServiceResource):
                     'network:router_interface',
                     'network:router_interface_distributed',
                     'network:ha_router_replicated_interface']
-        return [p for p in ports if p['device_owner'] not in excluded]
+        return [
+            p for p in ports
+            if p['device_owner'] not in excluded and
+            not (p['device_owner'] == 'network:distributed' and
+                 p['device_id'].startswith('ovnmeta-'))
+        ]
 
     def delete(self, resource):
         self.cloud.delete_port(resource['id'])
@@ -131,7 +136,12 @@ class Networks(base.ServiceResource):
             filters={'project_id': self.cleanup_project_id}
         )
         excluded = ['network:dhcp']
-        return [p for p in ports if p['device_owner'] not in excluded] == []
+        return (
+            [p for p in ports if
+             p['device_owner'] not in excluded and
+             not (p['device_owner'] == 'network:distributed' and
+                  p['device_id'].startswith('ovnmeta-'))] == []
+        )
 
     def list(self):
         networks = []
