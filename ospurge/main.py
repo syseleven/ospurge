@@ -205,8 +205,11 @@ def runner(resource_mngr, options, exit):
         log = logging.error
         recoverable = False
 
+        recoverable_exc_names = ('endpointnotfound',
+                                 'servicedisabledexception')
+
         def is_exception_recoverable(exc):
-            if exc.__class__.__name__.lower().endswith('endpointnotfound'):
+            if exc.__class__.__name__.lower().endswith(recoverable_exc_names):
                 return True
             elif hasattr(exc, 'inner_exception'):
                 # inner_exception is a tuple (type, value, traceback)
@@ -216,7 +219,7 @@ def runner(resource_mngr, options, exit):
                 exc_type = exc_info[0]
                 if (
                     exc_type is not None and
-                    exc_type.__name__.lower().endswith('endpointnotfound')
+                    exc_type.__name__.lower().endswith(recoverable_exc_names)
                 ):
                     return True
             return False
