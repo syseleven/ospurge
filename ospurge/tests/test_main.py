@@ -174,6 +174,24 @@ class TestFunctions(unittest.TestCase):
         self.assertEqual(1, resource_manager.list.call_count)
         self.assertFalse(exit.set.called)
 
+    def test_runner_with_service_disabled_exception(self):
+        class ServiceDisabledException(Exception):
+            pass
+        exc = shade.exc.OpenStackCloudException("")
+        exc.inner_exception = (ServiceDisabledException, )
+        resource_manager = mock.Mock(list=mock.Mock(side_effect=exc))
+        exit = mock.Mock()
+
+        main.runner(resource_manager, mock.Mock(dry_run=True), exit)
+        self.assertEqual(1, resource_manager.list.call_count)
+        self.assertFalse(exit.set.called)
+
+        resource_manager = mock.Mock(
+            list=mock.Mock(side_effect=ServiceDisabledException))
+        main.runner(resource_manager, mock.Mock(dry_run=True), exit)
+        self.assertEqual(1, resource_manager.list.call_count)
+        self.assertFalse(exit.set.called)
+
     @mock.patch.object(main, 'connection')
     @mock.patch.object(main, 'loader', autospec=True)
     @mock.patch('argparse.ArgumentParser.parse_args')
